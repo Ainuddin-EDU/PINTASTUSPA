@@ -41,6 +41,9 @@
   <!-- SheetJS (XLSX) CDN -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
+  <!-- Supabase JS Client CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
     body {
       font-family: 'Inter', sans-serif;
@@ -71,6 +74,11 @@
 
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
+
+    // --- Langkah 4: Inisialisasi Client Supabase untuk Jadual "markah" ---
+    const SUPABASE_URL = "https://gqrnzoexycijcbddpnwe.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdxcm56b2V4eWNpamNiZGRwbndlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU1MzQ2MjgsImV4cCI6MjEwMTExMDYyOH0.f6LIBsn0VMiVHlMyKSAcksOSj6cqhPCNU384MrVy1B8";
+    const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
     // SVG Icon Helper Components
     const IconSearch = ({ className = "w-5 h-5" }) => (
@@ -113,7 +121,6 @@
       <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
     );
 
-    // High-resolution SVG rendering of Angkatan Pertahanan Awam Malaysia (APM) Logo
     const APMLogo = ({ className = "w-10 h-10" }) => (
       <svg viewBox="0 0 300 340" className={className} xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -197,40 +204,9 @@
         pertolonganCemas: 18,
         kawadKaki: 58,
         submittedAt: '2026-07-30T10:15:00.000Z'
-      },
-      {
-        id: '3',
-        noIc: '080920-10-3344',
-        nama: 'Chong Wei Ming',
-        sekolah: 'SJK(C) Chung Hwa',
-        negeri: 'Pulau Pinang',
-        markahTeori: 78,
-        submitted: false,
-        kecergasan: 0,
-        bukuAktiviti: 0,
-        ikatan: 0,
-        pertolonganCemas: 0,
-        kawadKaki: 0,
-        submittedAt: null
-      },
-      {
-        id: '4',
-        noIc: '081105-03-8899',
-        nama: 'Nur Aiman bin Mohd Rizal',
-        sekolah: 'SK Sultan Ismail',
-        negeri: 'Kelantan',
-        markahTeori: 60,
-        submitted: true,
-        kecergasan: 5,
-        bukuAktiviti: 6,
-        ikatan: 14,
-        pertolonganCemas: 10,
-        kawadKaki: 32,
-        submittedAt: '2026-07-31T14:20:00.000Z'
       }
     ];
 
-    // Initial default admin database (ADMIN1 and ADMIN2 strictly)
     const INITIAL_ADMINS = {
       ADMIN1: { username: 'ADMIN1', email: '', password: '', registered: false },
       ADMIN2: { username: 'ADMIN2', email: '', password: '', registered: false }
@@ -292,20 +268,47 @@
     };
 
     function App() {
-      const [activeTab, setActiveTab] = useState('home'); // 'home' | 'admin'
-      const [adminSubTab, setAdminSubTab] = useState('data'); // 'data' | 'markah'
+      const [activeTab, setActiveTab] = useState('home'); 
+      const [adminSubTab, setAdminSubTab] = useState('data'); 
 
-      // Global Data State with Local Storage persistence
-      const [students, setStudents] = useState(() => {
+      // Data State dari Supabase Jadual "markah"
+      const [students, setStudents] = useState([]);
+      const [loadingData, setLoadingData] = useState(true);
+
+      const fetchMarkahFromSupabase = async () => {
+        setLoadingData(true);
         try {
-          const saved = localStorage.getItem('sistem_markah_students');
-          return saved ? JSON.parse(saved) : DEFAULT_STUDENTS;
-        } catch {
-          return DEFAULT_STUDENTS;
-        }
-      });
+          if (!supabaseClient) {
+            const saved = localStorage.getItem('sistem_markah_students');
+            setStudents(saved ? JSON.parse(saved) : DEFAULT_STUDENTS);
+            return;
+          }
 
-      // Admin Accounts State - Strictly ADMIN1 and ADMIN2
+          const { data, error } = await supabaseClient
+            .from('markah')
+            .select('*');
+
+          if (error) {
+            console.error('Ralat fetching dari Supabase (jadual markah):', error);
+            const saved = localStorage.getItem('sistem_markah_students');
+            setStudents(saved ? JSON.parse(saved) : DEFAULT_STUDENTS);
+          } else if (data && data.length > 0) {
+            setStudents(data);
+          } else {
+            setStudents(DEFAULT_STUDENTS);
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setLoadingData(false);
+        }
+      };
+
+      useEffect(() => {
+        fetchMarkahFromSupabase();
+      }, []);
+
+      // Admin Accounts State
       const [adminDB, setAdminDB] = useState(() => {
         try {
           const saved = localStorage.getItem('sistem_markah_admin_db');
@@ -339,16 +342,6 @@
         setTimeout(() => setToast({ message: '', type: '' }), 4000);
       };
 
-      // Save student updates
-      useEffect(() => {
-        try {
-          localStorage.setItem('sistem_markah_students', JSON.stringify(students));
-        } catch (e) {
-          console.error('Failed to save students to localStorage', e);
-        }
-      }, [students]);
-
-      // Save admin DB updates
       useEffect(() => {
         try {
           localStorage.setItem('sistem_markah_admin_db', JSON.stringify(adminDB));
@@ -376,18 +369,13 @@
       // Admin Login & Forgot Password States
       const [selectedAdminId, setSelectedAdminId] = useState('ADMIN1');
       const [loginPassword, setLoginPassword] = useState('');
-      
-      // First time registration state for ADMIN1 / ADMIN2
       const [setupEmail, setSetupEmail] = useState('');
       const [setupPassword, setSetupPassword] = useState('');
       const [setupConfirmPass, setSetupConfirmPass] = useState('');
-
-      // Forgot Password Modal State
       const [showForgotModal, setShowForgotModal] = useState(false);
       const [forgotAdminId, setForgotAdminId] = useState('ADMIN1');
       const [simulatedEmailSent, setSimulatedEmailSent] = useState(null);
 
-      // Search IC Handler
       const handleSearchIC = (e) => {
         e?.preventDefault();
         const cleanedSearch = cleanIC(icSearchInput);
@@ -407,7 +395,6 @@
         }
       };
 
-      // Handle Input Change in Step 2 with validation
       const handleMarkChange = (field, value, maxVal) => {
         if (value !== '' && !/^\d+$/.test(value)) return;
 
@@ -422,7 +409,6 @@
         setFormErrors(prev => ({ ...prev, [field]: errorMsg }));
       };
 
-      // Check if form is completely valid
       const isFormValid = useMemo(() => {
         const fields = [
           { key: 'kecergasan', max: 10 },
@@ -441,39 +427,48 @@
         return true;
       }, [markForm]);
 
-      // Submit Final Confirmation
-      const handleConfirmSubmit = () => {
+      const handleConfirmSubmit = async () => {
         if (!searchResult || !searchResult.student) return;
 
         const studentId = searchResult.student.id;
+        const markahPayload = {
+          kecergasan: parseInt(markForm.kecergasan, 10),
+          bukuAktiviti: parseInt(markForm.bukuAktiviti, 10),
+          ikatan: parseInt(markForm.ikatan, 10),
+          pertolonganCemas: parseInt(markForm.pertolonganCemas, 10),
+          kawadKaki: parseInt(markForm.kawadKaki, 10),
+          submitted: true,
+          submittedAt: new Date().toISOString()
+        };
+
         const updatedStudents = students.map(s => {
           if (s.id === studentId) {
-            return {
-              ...s,
-              kecergasan: parseInt(markForm.kecergasan, 10),
-              bukuAktiviti: parseInt(markForm.bukuAktiviti, 10),
-              ikatan: parseInt(markForm.ikatan, 10),
-              pertolonganCemas: parseInt(markForm.pertolonganCemas, 10),
-              kawadKaki: parseInt(markForm.kawadKaki, 10),
-              submitted: true,
-              submittedAt: new Date().toISOString()
-            };
+            return { ...s, ...markahPayload };
           }
           return s;
         });
-
         setStudents(updatedStudents);
+
+        if (supabaseClient) {
+          const { error } = await supabaseClient
+            .from('markah')
+            .update(markahPayload)
+            .eq('id', studentId);
+
+          if (error) {
+            console.error('Gagal kemas kini di jadual markah Supabase:', error);
+          }
+        }
+
         setShowPreviewModal(false);
         showToast('Markah murid berjaya disimpan!', 'success');
         
-        // Reset Homepage state
         setStep(1);
         setIcSearchInput('');
         setSearchResult(null);
         setMarkForm({ kecergasan: '', bukuAktiviti: '', ikatan: '', pertolonganCemas: '', kawadKaki: '' });
       };
 
-      // Handle First Time Admin Email & Password Registration (ADMIN1 or ADMIN2)
       const handleFirstTimeSetup = (e) => {
         e.preventDefault();
         if (!setupEmail.trim() || !setupPassword.trim()) {
@@ -485,7 +480,7 @@
           return;
         }
 
-        const targetAdmin = selectedAdminId; // ADMIN1 or ADMIN2
+        const targetAdmin = selectedAdminId;
         const updatedDB = {
           ...adminDB,
           [targetAdmin]: {
@@ -500,20 +495,18 @@
         setCurrentAdminUser(targetAdmin);
         localStorage.setItem('sistem_markah_active_admin', targetAdmin);
 
-        // Reset Setup Form
         setSetupEmail('');
         setSetupPassword('');
         setSetupConfirmPass('');
-        showToast(`Akaun ${targetAdmin} berjaya didaftarkan! Pautan kata laluan telah dipautkan ke ${setupEmail.trim()}`, 'success');
+        showToast(`Akaun ${targetAdmin} berjaya didaftarkan!`, 'success');
       };
 
-      // Handle Admin Login
       const handleLoginAdmin = (e) => {
         e.preventDefault();
         const targetAdminObj = adminDB[selectedAdminId];
 
         if (!targetAdminObj || !targetAdminObj.registered) {
-          showToast(`Akaun ${selectedAdminId} belum diderderkan e-mel. Sila penuhi pendaftaran kali pertama.`, 'warning');
+          showToast(`Akaun ${selectedAdminId} belum didaftarkan e-mel.`, 'warning');
           return;
         }
 
@@ -527,17 +520,15 @@
         }
       };
 
-      // Handle Forgot Password Trigger
       const handleSendForgotPasswordEmail = (e) => {
         e.preventDefault();
         const targetObj = adminDB[forgotAdminId];
 
         if (!targetObj || !targetObj.registered || !targetObj.email) {
-          showToast(`Akaun ${forgotAdminId} belum mendaftarkan e-mel semasa log in kali pertama!`, 'error');
+          showToast(`Akaun ${forgotAdminId} belum mendaftarkan e-mel!`, 'error');
           return;
         }
 
-        // Simulate sending email to registered email
         setSimulatedEmailSent({
           adminId: forgotAdminId,
           email: targetObj.email,
@@ -545,7 +536,7 @@
           sentTime: new Date().toLocaleTimeString('ms-MY')
         });
 
-        showToast(`Kata laluan bagi ${forgotAdminId} telah diemelkan ke ${targetObj.email}`, 'success');
+        showToast(`Kata laluan telah diemelkan ke ${targetObj.email}`, 'success');
       };
 
       const handleLogoutAdmin = () => {
@@ -561,14 +552,12 @@
         noIc: '', nama: '', sekolah: '', negeri: '', markahTeori: 80
       });
 
-      // Upload Excel / CSV file logic
       const handleFileUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
         const reader = new FileReader();
-
-        reader.onload = (evt) => {
+        reader.onload = async (evt) => {
           try {
             let parsedRows = [];
             if (window.XLSX) {
@@ -577,18 +566,6 @@
               const wsname = wb.SheetNames[0];
               const ws = wb.Sheets[wsname];
               parsedRows = window.XLSX.utils.sheet_to_json(ws);
-            } else {
-              const text = evt.target.result;
-              const lines = text.split('\n').filter(Boolean);
-              if (lines.length > 1) {
-                const headers = lines[0].split(',').map(h => h.trim().toUpperCase());
-                parsedRows = lines.slice(1).map(line => {
-                  const cols = line.split(',').map(c => c.trim());
-                  let obj = {};
-                  headers.forEach((h, idx) => { obj[h] = cols[idx] || ''; });
-                  return obj;
-                });
-              }
             }
 
             if (parsedRows.length === 0) {
@@ -612,7 +589,7 @@
               const teori = parseInt(getVal('MARKAH TEORI', 'MARKAH_TEORI', 'TEORI') || '80', 10);
 
               return {
-                id: Date.now().toString() + '_' + idx + '_' + Math.random().toString(36).substring(2, 5),
+                id: Date.now().toString() + '_' + idx,
                 noIc: formatIC(rawIc) || `080000-00-${1000 + idx}`,
                 nama,
                 sekolah,
@@ -629,10 +606,16 @@
             });
 
             setStudents(prev => [...prev, ...newRecords]);
+
+            if (supabaseClient && newRecords.length > 0) {
+              const { error } = await supabaseClient.from('markah').insert(newRecords);
+              if (error) console.error('Ralat simpan file ke Supabase jadual markah:', error);
+            }
+
             showToast(`Berjaya memuat naik ${newRecords.length} rekod murid!`, 'success');
           } catch (err) {
             console.error(err);
-            showToast('Gagal memproses fail Excel. Pastikan format betul.', 'error');
+            showToast('Gagal memproses fail Excel.', 'error');
           }
         };
 
@@ -644,7 +627,6 @@
         e.target.value = null;
       };
 
-      // Download Sample Excel Template
       const handleDownloadTemplate = () => {
         const templateData = [
           { 'NEGERI': 'Kedah', 'SEKOLAH': 'SK Seri Ampang', 'NAMA': 'Ahmad Faizal bin Bakar', 'NO IC': '080312-02-1234', 'MARKAH TEORI': 85 },
@@ -656,37 +638,43 @@
           const wb = window.XLSX.utils.book_new();
           window.XLSX.utils.book_append_sheet(wb, ws, "Data Murid");
           window.XLSX.writeFile(wb, "Template_Data_Murid.xlsx");
-        } else {
-          let csvContent = "data:text/csv;charset=utf-8,NEGERI,SEKOLAH,NAMA,NO IC,MARKAH TEORI\n";
-          templateData.forEach(r => {
-            csvContent += `${r.NEGERI},${r.SEKOLAH},${r.NAMA},${r['NO IC']},${r['MARKAH TEORI']}\n`;
-          });
-          const encodedUri = encodeURI(csvContent);
-          const link = document.createElement("a");
-          link.setAttribute("href", encodedUri);
-          link.setAttribute("download", "Template_Data_Murid.csv");
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
         }
         showToast('Template Excel dimuat turun', 'info');
       };
 
-      const handleDeleteStudent = (id) => {
+      const handleDeleteStudent = async (id) => {
         setStudents(prev => prev.filter(s => s.id !== id));
+        if (supabaseClient) {
+          const { error } = await supabaseClient.from('markah').delete().eq('id', id);
+          if (error) console.error('Ralat padams Supabase markah:', error);
+        }
         showToast('Rekod murid berjaya dipadam', 'success');
       };
 
-      const handleSaveEditStudent = (e) => {
+      const handleSaveEditStudent = async (e) => {
         e.preventDefault();
         if (!editingStudent) return;
 
         setStudents(prev => prev.map(s => s.id === editingStudent.id ? editingStudent : s));
+
+        if (supabaseClient) {
+          const { error } = await supabaseClient
+            .from('markah')
+            .update({
+              nama: editingStudent.nama,
+              noIc: editingStudent.noIc,
+              sekolah: editingStudent.sekolah,
+              negeri: editingStudent.negeri
+            })
+            .eq('id', editingStudent.id);
+          if (error) console.error('Ralat kemaskini Supabase markah:', error);
+        }
+
         setEditingStudent(null);
         showToast('Maklumat murid telah dikemas kini', 'success');
       };
 
-      const handleAddManualStudent = (e) => {
+      const handleAddManualStudent = async (e) => {
         e.preventDefault();
         if (!newStudentForm.nama || !newStudentForm.noIc || !newStudentForm.sekolah || !newStudentForm.negeri) {
           showToast('Sila lengkapkan semua medan', 'warning');
@@ -710,6 +698,12 @@
         };
 
         setStudents(prev => [newRec, ...prev]);
+
+        if (supabaseClient) {
+          const { error } = await supabaseClient.from('markah').insert([newRec]);
+          if (error) console.error('Ralat tambah rekod Supabase markah:', error);
+        }
+
         setShowAddModal(false);
         setNewStudentForm({ noIc: '', nama: '', sekolah: '', negeri: '', markahTeori: 80 });
         showToast('Murid baharu berjaya ditambah!', 'success');
@@ -751,7 +745,6 @@
       return (
         <div className="min-h-screen flex flex-col bg-slate-50">
           
-          {/* Header */}
           <header className="gradient-header text-white shadow-xl sticky top-0 z-30">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col md:flex-row items-center justify-between gap-3">
               <div className="flex items-center space-x-3">
@@ -766,7 +759,6 @@
                 </div>
               </div>
 
-              {/* View Navigation Switcher */}
               <div className="flex items-center bg-slate-950/60 p-1.5 rounded-2xl border border-slate-700/60 shadow-inner">
                 <button
                   onClick={() => setActiveTab('home')}
@@ -799,14 +791,12 @@
 
           <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: '' })} />
 
-          {/* Main Body */}
           <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
             
-            {/* VIEW 1: HOME PAGE (Carian / Borang Input) */}
+            {}
             {activeTab === 'home' && (
               <div className="space-y-6">
                 
-                {/* Search Box */}
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
                   <div className="flex justify-between items-center mb-2">
                     <h2 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
@@ -842,7 +832,6 @@
                   </form>
                 </div>
 
-                {/* Candidate Found - Step 1 Card */}
                 {searchResult && step === 1 && (
                   <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
                     {searchResult.status === 'NOT_FOUND' && (
@@ -930,12 +919,8 @@
                   </div>
                 )}
 
-                {/* */}
-                {/* Candidate Evaluation Form - Step 2 */}
                 {step === 2 && searchResult && searchResult.student && (
                   <div className="space-y-6 max-w-4xl mx-auto">
-                    
-                    {/* Form Component */}
                     <div className="space-y-6">
                       <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-2 h-full bg-amber-500"></div>
@@ -967,7 +952,6 @@
                             />
                             <span className="text-xs text-slate-400 font-medium">/ 10 raw markah</span>
                           </div>
-                          {formErrors.kecergasan && <p className="text-xs text-red-500 font-semibold">{formErrors.kecergasan}</p>}
                         </div>
 
                         {/* 2. Buku Aktiviti */}
@@ -991,10 +975,9 @@
                             />
                             <span className="text-xs text-slate-400 font-medium">/ 10 raw markah</span>
                           </div>
-                          {formErrors.bukuAktiviti && <p className="text-xs text-red-500 font-semibold">{formErrors.bukuAktiviti}</p>}
                         </div>
 
-                        {/* 3. Ikatan & Simpulan */}
+                        {/* 3. Ikatan */}
                         <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                           <div className="flex justify-between items-center">
                             <div>
@@ -1015,7 +998,6 @@
                             />
                             <span className="text-xs text-slate-400 font-medium">/ 30 raw markah</span>
                           </div>
-                          {formErrors.ikatan && <p className="text-xs text-red-500 font-semibold">{formErrors.ikatan}</p>}
                         </div>
 
                         {/* 4. Pertolongan Cemas */}
@@ -1039,7 +1021,6 @@
                             />
                             <span className="text-xs text-slate-400 font-medium">/ 20 raw markah</span>
                           </div>
-                          {formErrors.pertolonganCemas && <p className="text-xs text-red-500 font-semibold">{formErrors.pertolonganCemas}</p>}
                         </div>
 
                         {/* 5. Kawad Kaki */}
@@ -1063,10 +1044,8 @@
                             />
                             <span className="text-xs text-slate-400 font-medium">/ 65 raw markah</span>
                           </div>
-                          {formErrors.kawadKaki && <p className="text-xs text-red-500 font-semibold">{formErrors.kawadKaki}</p>}
                         </div>
 
-                        {/* Action Buttons */}
                         <div className="pt-4 flex items-center justify-end space-x-3 border-t border-slate-100">
                           <button
                             type="button"
@@ -1095,7 +1074,7 @@
               </div>
             )}
 
-            {/* Modal Confirmation Preview */}
+            {}
             {showPreviewModal && searchResult && searchResult.student && (
               <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
                 <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 border border-slate-100">
@@ -1137,8 +1116,7 @@
               </div>
             )}
 
-            {/* */}
-            {/* VIEW 2: ADMIN PANEL */}
+            {}
             {activeTab === 'admin' && (
               <div>
                 {!isAdminLoggedIn ? (
@@ -1152,8 +1130,6 @@
                     </div>
 
                     <div className="p-6 space-y-5">
-                      
-                      {/* Admin Selector Switcher */}
                       <div className="flex bg-slate-100 p-1 rounded-xl">
                         <button
                           type="button"
@@ -1175,9 +1151,7 @@
                         </button>
                       </div>
 
-                      {/* Check if Selected Admin is Already Registered or Needs 1st Time Setup */}
                       {adminDB[selectedAdminId]?.registered ? (
-                        /* Normal Login Form */
                         <form onSubmit={handleLoginAdmin} className="space-y-4">
                           <div>
                             <label className="block text-xs font-bold text-slate-700 mb-1">ID Admin</label>
@@ -1222,14 +1196,13 @@
                           </button>
                         </form>
                       ) : (
-                        /* First Time Login & Setup Email Form for ADMIN1 or ADMIN2 */
                         <form onSubmit={handleFirstTimeSetup} className="space-y-4 bg-amber-50/60 p-4 rounded-xl border border-amber-200">
                           <div className="flex items-center space-x-2 text-amber-900 text-xs font-bold">
                             <IconKey className="w-4 h-4 text-amber-600 shrink-0" />
                             <span>Pendaftaran Log Masuk Kali Pertama: {selectedAdminId}</span>
                           </div>
                           <p className="text-[11px] text-amber-800 leading-relaxed">
-                            Akaun <strong>{selectedAdminId}</strong> dikesan belum didaftarkan. Sila masukkan e-mel rasmi untuk rujukan kata laluan sekiranya terlupa.
+                            Akaun <strong>{selectedAdminId}</strong> dikesan belum didaftarkan. Sila masukkan e-mel rasmi.
                           </p>
 
                           <div>
@@ -1276,14 +1249,10 @@
                           </button>
                         </form>
                       )}
-
                     </div>
                   </div>
                 ) : (
-                  /* Admin Dashboard View */
                   <div className="space-y-6">
-                    
-                    {/* Admin Bar */}
                     <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 bg-amber-500 text-slate-950 font-black rounded-xl flex items-center justify-center text-sm shadow">
@@ -1308,7 +1277,6 @@
                       </div>
                     </div>
 
-                    {/* Admin Subtabs */}
                     <div className="flex space-x-2 border-b border-slate-200">
                       <button
                         onClick={() => setAdminSubTab('data')}
@@ -1328,12 +1296,9 @@
                       </button>
                     </div>
 
-                    {/* */}
                     {/* Subtab 1: Data Murid */}
                     {adminSubTab === 'data' && (
                       <div className="space-y-6">
-                        
-                        {/* Control Buttons */}
                         <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200">
                           <div className="flex flex-wrap items-center gap-2">
                             <label className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer transition flex items-center space-x-2">
@@ -1360,7 +1325,6 @@
                           </button>
                         </div>
 
-                        {/* Search Filter in Admin Table */}
                         <div className="bg-white p-4 rounded-2xl border border-slate-200 flex items-center space-x-3">
                           <IconSearch className="w-4 h-4 text-slate-400" />
                           <input
@@ -1372,7 +1336,6 @@
                           />
                         </div>
 
-                        {/* Student Table */}
                         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
                           <div className="overflow-x-auto custom-scrollbar">
                             <table className="w-full text-left text-xs border-collapse">
@@ -1390,10 +1353,10 @@
                               <tbody className="divide-y divide-slate-100">
                                 {students
                                   .filter(s => 
-                                    s.nama.toLowerCase().includes(searchFilterData.toLowerCase()) ||
-                                    s.noIc.includes(searchFilterData) ||
-                                    s.sekolah.toLowerCase().includes(searchFilterData.toLowerCase()) ||
-                                    s.negeri.toLowerCase().includes(searchFilterData.toLowerCase())
+                                    s.nama?.toLowerCase().includes(searchFilterData.toLowerCase()) ||
+                                    s.noIc?.includes(searchFilterData) ||
+                                    s.sekolah?.toLowerCase().includes(searchFilterData.toLowerCase()) ||
+                                    s.negeri?.toLowerCase().includes(searchFilterData.toLowerCase())
                                   )
                                   .map((st, index) => (
                                     <tr key={st.id} className="hover:bg-slate-50 transition">
@@ -1434,11 +1397,9 @@
                       </div>
                     )}
 
-                    {/* Subtab 2: Rumusan Markah */}
+                    {}
                     {adminSubTab === 'markah' && (
                       <div className="space-y-6">
-                        
-                        {/* Overall Stats Cards */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                             <span className="text-xs font-bold text-slate-400 uppercase">Jumlah Calon</span>
@@ -1458,7 +1419,6 @@
                           </div>
                         </div>
 
-                        {/* Export Button */}
                         <div className="flex justify-end">
                           <button
                             onClick={exportToExcel}
@@ -1469,7 +1429,6 @@
                           </button>
                         </div>
 
-                        {/* Detailed Marks Table */}
                         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
                           <div className="overflow-x-auto custom-scrollbar">
                             <table className="w-full text-left text-xs border-collapse">
@@ -1524,7 +1483,7 @@
 
           </main>
 
-          {/* */}
+          {}
           {/* Modal Edit Murid */}
           {editingStudent && (
             <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1672,7 +1631,7 @@
                 </div>
 
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  Pilih ID Admin anda. Kata laluan akan dihantar melalui e-mel yang telah didaftarkan semasa log masuk kali pertama.
+                  Pilih ID Admin anda. Kata laluan akan dihantar melalui e-mel yang telah didaftarkan.
                 </p>
 
                 <form onSubmit={handleSendForgotPasswordEmail} className="space-y-4">
